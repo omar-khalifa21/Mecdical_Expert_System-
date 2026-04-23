@@ -4,6 +4,8 @@ Entry point for the Medical Diagnosis Expert System.
 Wires all modules together and starts the chatbot.
 """
 
+import os
+
 from knowledge_base.knowledge_base import (
     load_dataset,
     build_disease_symptom_map,
@@ -47,4 +49,20 @@ def main():
 
 
 if __name__ == "__main__":
+    
+    csv_path = os.path.join(os.path.dirname(__file__), "Medical Diagnosis Expert System.csv")
+
+    dataset = load_dataset(csv_path)
+    dsm = build_disease_symptom_map(dataset)
+    dpm = build_disease_precaution_map(dataset)
+    all_syms = get_all_symptoms(dsm)
+
+    print(f"Rows loaded      : {len(dataset)}")
+    print(f"Unique diseases  : {len(dsm)}")
+    print(f"Unique symptoms  : {len(all_syms)}")
+
+    first_disease = next(iter(dsm))
+    print(f"\nDisease     : {first_disease}")
+    print(f"Symptoms    : {get_symptoms_for_disease(first_disease, dsm)}")
+    print(f"Precautions : {get_precautions_for_disease(first_disease, dpm)}")
     main()

@@ -40,5 +40,6 @@ def extract_symptoms(text: str, known_symptoms: list[str]) -> list[str]:
 
 def normalize_symptom(symptom: str) -> str:
     # TODO: normalize a single symptom string (strip, lowercase, remove underscores/hyphens)
-    #       used when loading the dataset so symptom strings are consistent
-    pass
+    
+    return symptom.strip().lower().replace("_", " ").replace("-", " ")
+    
