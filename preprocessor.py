@@ -10,7 +10,7 @@ from nltk.stem import PorterStemmer
 _stopwords  = set(stopwords.words("english"))
 _lemmatizer = WordNetLemmatizer()
 # _stemmer = PorterStemmer()
-# model       = SentenceTransformer('all-MiniLM-L6-v2')
+model       = SentenceTransformer('all-MiniLM-L6-v2')
 
 
 #maping because fuzz if threshold is high the symptoms don't find it's match and if low then more false postive
@@ -81,13 +81,13 @@ symptom_map        = {normalize_symptom(s): s for s in known_symptoms}
 symptom_display    = list(symptom_map.keys())
 
 
-# symptom_embeddings = model.encode(symptom_display, convert_to_tensor=True)  
+symptom_embeddings = model.encode(symptom_display, convert_to_tensor=True)  
 
 
 
 def extract_symptoms(text: str) -> list[str]:
 
-    text=apply_aliases(text)
+    # text=apply_aliases(text)
 
     tokens = tokenize(text)
     tokens = remove_stopwords(tokens)
@@ -96,30 +96,34 @@ def extract_symptoms(text: str) -> list[str]:
 
     matched = set()
 
+## if we use a model in finding the similarty between the symptoms instead of mapping by comparing a vector of values for each word
     for token in tokens:
-        if token in SYMPTOM_ALIASES:
-            matched.add(SYMPTOM_ALIASES[token])
-            continue
+        token_embedding = model.encode(token, convert_to_tensor=True)
+        token_embedding = token_embedding.unsqueeze(0)  
 
-        result = process.extractOne(
-            token,
-            symptom_display,
-            scorer=fuzz.token_sort_ratio
-        )
-        if result and result[1] >= 70:
-            matched.add(symptom_map[result[0]])
+        scores     = util.cos_sim(token_embedding, symptom_embeddings)[0]
+        best_idx   = scores.argmax().item()
+        best_score = scores[best_idx].item()
+        print(f"  token: '{token}' → best match: '{symptom_display[best_idx]}' ({best_score:.2f})")
+        if best_score >= 0.6:
+            matched.add(symptom_map[symptom_display[best_idx]])
 
-### if we use a model in finding the similarty between the symptoms instead of mapping by comparing a vector of values for each word
-        # token_embedding = model.encode(token, convert_to_tensor=True)
-        # scores          = util.cos_sim(token_embedding, symptom_embeddings)[0]
-        # best_idx        = scores.argmax().item()
-        # best_score      = scores[best_idx].item()
+# 
+#     for token in tokens:
+#         if token in SYMPTOM_ALIASES:
+#             matched.add(SYMPTOM_ALIASES[token])
+#             continue
 
-        # if best_score >= 0.6:
-        #     matched.add(symptom_map[symptom_display[best_idx]])
+#         result = process.extractOne(
+#             token,
+#             symptom_display,
+#             scorer=fuzz.token_sort_ratio
+#         )
+#         if result and result[1] >= 70:
+#             matched.add(symptom_map[result[0]])"
 
     return sorted(matched)
-
+    
 
 while True:
         user_input = input("Enter symptoms: ")
