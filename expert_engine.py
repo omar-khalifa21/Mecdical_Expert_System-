@@ -1,61 +1,100 @@
 """
-engine/expert_engine.py
-Defines the Experta-based knowledge engine.
-Facts represent observed symptoms; Rules fire when symptom
-combinations match known disease patterns.
-
-Lab 3 reference: Experta KnowledgeEngine with Fact + @Rule decorators.
+Experta-based inference engine for symptom-driven medical diagnosis.
 """
 
-from experta import KnowledgeEngine, Fact, Rule, AND, OR, NOT, L, W, MATCH
+import collections
+import collections.abc
+
+if not hasattr(collections, "Mapping"):
+    collections.Mapping = collections.abc.Mapping
+if not hasattr(collections, "MutableMapping"):
+    collections.MutableMapping = collections.abc.MutableMapping
+if not hasattr(collections, "Sequence"):
+    collections.Sequence = collections.abc.Sequence
+
+from experta import Fact, KnowledgeEngine, MATCH, Rule
+
+from preprocessor import normalize_symptom
 
 
 class SymptomFact(Fact):
-    """
-    Represents a single confirmed symptom observed in the user's input.
-    e.g. SymptomFact(name="itching")
-    """
-    # TODO: define the 'name' field (string) using experta's Field if needed
     pass
 
 
 class DiagnosisFact(Fact):
-    """
-    Represents a candidate disease conclusion produced by a rule.
-    e.g. DiagnosisFact(disease="Fungal Infection", matched=2, total=4)
-    """
-    # TODO: define fields: disease (str), matched (int), total (int)
     pass
 
 
 class MedicalDiagnosisEngine(KnowledgeEngine):
-    """
-    Main Experta engine.
-    Rules are generated dynamically from the disease-symptom knowledge base
-    OR defined manually for high-priority diseases.
-    """
-
-    def __init__(self, disease_symptom_map: dict):
-        # TODO: call super().__init__(), store the disease_symptom_map,
-        #       initialize a list to collect diagnosis results
-        pass
+    def __init__(self, disease_symptom_map: dict[str, list[str]]):
+        super().__init__()
+        self.disease_symptom_map = disease_symptom_map
+        self.normalized_disease_map: dict[str, set[str]] = {}
+        self.user_symptoms: list[str] = []
+        self.matched_by_disease: dict[str, set[str]] = {}
+        self.results: list[dict] = []
 
     def load_rules_from_knowledge_base(self):
-        # TODO: dynamically generate and register @Rule methods for each disease
-        #       each rule fires when SymptomFacts matching that disease's symptoms exist
-        #       this replaces writing hundreds of rules by hand
-        pass
+        self.normalized_disease_map = {
+            disease: {normalize_symptom(symptom) for symptom in symptoms if normalize_symptom(symptom)}
+            for disease, symptoms in self.disease_symptom_map.items()
+        }
 
-    def get_diagnosis_results(self) -> list[dict]:
-        # TODO: return the collected DiagnosisFacts as a list of dicts
-        #       e.g. [{"disease": "Flu", "matched": 3, "total": 5}, ...]
-        pass
+    def reset(self):
+        super().reset()
+        self.user_symptoms = []
+        self.matched_by_disease = {}
+        self.results = []
 
     def assert_symptoms(self, symptoms: list[str]):
-        # TODO: for each symptom in the list, call self.declare(SymptomFact(name=symptom))
-        pass
+        for symptom in symptoms:
+            clean_symptom = normalize_symptom(symptom)
+            if clean_symptom:
+                self.declare(SymptomFact(name=clean_symptom))
 
-    # --- Example of a manually written rule (for reference) ---
-    # @Rule(AND(SymptomFact(name="itching"), SymptomFact(name="skin rash")))
-    # def rule_fungal_infection(self):
-    #     self.declare(DiagnosisFact(disease="Fungal Infection"))
+    @Rule(SymptomFact(name=MATCH.symptom))
+    def collect_symptoms(self, symptom):
+        clean_symptom = normalize_symptom(symptom)
+        if clean_symptom not in self.user_symptoms:
+            self.user_symptoms.append(clean_symptom)
+
+        for disease, disease_symptoms in self.normalized_disease_map.items():
+            if clean_symptom not in disease_symptoms:
+                continue
+
+            matched = self.matched_by_disease.setdefault(disease, set())
+            if clean_symptom in matched:
+                continue
+
+            matched.add(clean_symptom)
+            self.declare(
+                DiagnosisFact(
+                    disease=disease,
+                    symptom=clean_symptom,
+                    matched=len(matched),
+                    total=len(disease_symptoms),
+                )
+            )
+
+    def get_diagnosis_results(self) -> list[dict]:
+        self.results = []
+
+        for disease, matched_symptoms in self.matched_by_disease.items():
+            disease_symptoms = self.normalized_disease_map.get(disease, set())
+            if not matched_symptoms or not disease_symptoms:
+                continue
+
+            self.results.append(
+                {
+                    "disease": disease,
+                    "matched": len(matched_symptoms),
+                    "total": len(disease_symptoms),
+                    "matched_symptoms": sorted(matched_symptoms),
+                }
+            )
+
+        self.results.sort(
+            key=lambda item: (item["matched"] / item["total"], item["matched"]),
+            reverse=True,
+        )
+        return self.results
